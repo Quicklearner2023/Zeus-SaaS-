@@ -1,0 +1,8 @@
+{
+  "name": "SaaS Orchestrator & Web Dev Agent Studio",
+  "description": "A personal SaaS development suite to orchestrate AI sub-agents, generate production web applications, manage Netlify deployments, and track performance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

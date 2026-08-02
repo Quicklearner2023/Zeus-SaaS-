@@ -1,0 +1,22 @@
+# netlify.toml - Netlify Production Build & Routing Configuration
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NODE_ENV = "production"
+
+# SPA Fallback Redirect: Routes all incoming requests to index.html for client-side routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Production Security Headers
+[[headers]]
+  for = "/*"
+    [headers.values]
+      X-Frame-Options = "DENY"
+      X-Content-Type-Options = "nosniff"
+      Referrer-Policy = "no-referrer-when-downgrade"
