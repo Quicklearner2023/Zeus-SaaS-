@@ -7,7 +7,16 @@
   NODE_VERSION = "20"
   NODE_ENV = "production"
 
-# SPA Fallback Redirect: Routes all incoming requests to index.html for client-side routing
+[functions]
+  directory = "netlify/functions"
+
+# API Redirect: Routes all /api requests to the serverless function
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/server/api/:splat"
+  status = 200
+
+# SPA Fallback Redirect: Routes all other requests to index.html for client-side routing
 [[redirects]]
   from = "/*"
   to = "/index.html"

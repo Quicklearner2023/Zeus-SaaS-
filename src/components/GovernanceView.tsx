@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ShieldCheck, 
   Lock, 
@@ -15,40 +15,42 @@ import {
   FileText, 
   Cpu, 
   Zap,
-  UserPlus
+  UserPlus,
+  Database
 } from 'lucide-react';
-import { PLATFORM_STATE } from '@/services/gemini';
-import { UserProfile, PlatformRole } from '@/types';
+import { saasDb } from '@/services/db';
+import { UserProfile, PlatformRole, AuditLog } from '@/types';
 
 export const GovernanceView: React.FC = () => {
-  const [users, setUsers] = useState<UserProfile[]>(PLATFORM_STATE.users);
+  const [users, setUsers] = useState<UserProfile[]>(() => saasDb.getUsers());
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => saasDb.getAuditLogs());
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
   const [newRole, setNewRole] = useState<PlatformRole>('member');
 
+  useEffect(() => {
+    const unsubscribe = saasDb.subscribe(() => {
+      setUsers(saasDb.getUsers());
+      setAuditLogs(saasDb.getAuditLogs());
+    });
+    return unsubscribe;
+  }, []);
+
   const handleAddUser = () => {
     if (!newEmail.trim() || !newName.trim()) return;
 
-    const newUser: UserProfile = {
-      id: 'usr_' + Math.random().toString(36).substring(2, 9),
+    saasDb.addUser({
       email: newEmail,
       fullName: newName,
-      role: newRole,
-      createdAt: new Date().toISOString()
-    };
-
-    const updated = [...users, newUser];
-    setUsers(updated);
-    PLATFORM_STATE.users = updated;
+      role: newRole
+    });
 
     setNewEmail('');
     setNewName('');
   };
 
   const handleRoleChange = (userId: string, role: PlatformRole) => {
-    const updated = users.map(u => u.id === userId ? { ...u, role } : u);
-    setUsers(updated);
-    PLATFORM_STATE.users = updated;
+    saasDb.updateUserRole(userId, role);
   };
 
   return (
@@ -93,7 +95,7 @@ export const GovernanceView: React.FC = () => {
         <div className="bg-white p-5 rounded-2xl border border-black/[0.06] shadow-[0_2px_10px_rgba(0,0,0,0.02)] space-y-1">
           <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block">Audit Events Recorded</span>
           <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-zinc-900">{PLATFORM_STATE.auditLogs.length + 12}</span>
+            <span className="text-2xl font-black text-zinc-900">{auditLogs.length}</span>
             <FileText size={18} className="text-zinc-400" />
           </div>
         </div>
@@ -228,7 +230,7 @@ export const GovernanceView: React.FC = () => {
         </div>
 
         <div className="space-y-2">
-          {PLATFORM_STATE.auditLogs.map((log) => (
+          {auditLogs.map((log) => (
             <div key={log.id} className="p-3 bg-zinc-50 border border-black/[0.04] rounded-xl flex items-center justify-between text-xs">
               <div className="space-y-0.5">
                 <div className="flex items-center gap-2 font-bold text-zinc-900">

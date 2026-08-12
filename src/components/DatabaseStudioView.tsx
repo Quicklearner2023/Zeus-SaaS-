@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Database, 
   ShieldCheck, 
@@ -16,19 +16,54 @@ import {
   Check,
   Table,
   Users,
-  Server
+  Server,
+  RefreshCw,
+  Key,
+  Globe,
+  Terminal
 } from 'lucide-react';
 import { evaluateDatabaseRequirements } from '@/services/dbIntelligence';
-import { PLATFORM_STATE } from '@/services/gemini';
 import { DatabaseDecision } from '@/types';
+import { saasDb } from '@/services/db';
+import { 
+  getStoredSupabaseCredentials, 
+  saveSupabaseCredentials, 
+  testSupabaseConnection, 
+  resetSupabaseInstance,
+  SAAS_PLATFORM_SUPABASE_SQL 
+} from '@/services/supabase';
 
 export const DatabaseStudioView: React.FC = () => {
+  const [supabaseUrl, setSupabaseUrl] = useState(() => getStoredSupabaseCredentials().supabaseUrl);
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState(() => getStoredSupabaseCredentials().supabaseAnonKey);
+  const [connStatus, setConnStatus] = useState<{ success?: boolean; message?: string; testing?: boolean }>({});
+  const [syncStatus, setSyncStatus] = useState<{ success?: boolean; message?: string; syncing?: boolean }>({});
+
   const [testPrompt, setTestPrompt] = useState('Build a multi-vendor e-commerce marketplace with user signups, product listings, Stripe payments, and admin dashboards.');
   const [testName, setTestName] = useState('E-Commerce Marketplace');
   const [currentDecision, setCurrentDecision] = useState<DatabaseDecision>(() => 
     evaluateDatabaseRequirements('E-Commerce Marketplace', testPrompt)
   );
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [copiedPlatformSql, setCopiedPlatformSql] = useState(false);
+
+  const handleSaveCredentials = async () => {
+    saveSupabaseCredentials({ supabaseUrl, supabaseAnonKey });
+    resetSupabaseInstance();
+    await handleTestConnection();
+  };
+
+  const handleTestConnection = async () => {
+    setConnStatus({ testing: true });
+    const res = await testSupabaseConnection();
+    setConnStatus({ success: res.success, message: res.message, testing: false });
+  };
+
+  const handleSyncSupabase = async () => {
+    setSyncStatus({ syncing: true });
+    const res = await saasDb.syncWithSupabaseRemote();
+    setSyncStatus({ success: res.success, message: res.message, syncing: false });
+  };
 
   const handleEvaluate = () => {
     const decision = evaluateDatabaseRequirements(testName, testPrompt);
@@ -41,6 +76,12 @@ export const DatabaseStudioView: React.FC = () => {
     setTimeout(() => setCopiedIndex(null), 2000);
   };
 
+  const copyPlatformSql = () => {
+    navigator.clipboard.writeText(SAAS_PLATFORM_SUPABASE_SQL);
+    setCopiedPlatformSql(true);
+    setTimeout(() => setCopiedPlatformSql(false), 2000);
+  };
+
   return (
     <div className="flex-1 h-screen overflow-y-auto bg-[#FAFAFA] p-6 md:p-8 space-y-8">
       {/* Header */}
@@ -50,16 +91,124 @@ export const DatabaseStudioView: React.FC = () => {
             <Database size={22} className="text-emerald-600" />
             <span className="text-xs font-bold uppercase tracking-wider text-emerald-600">Architect Studio</span>
           </div>
-          <h1 className="text-2xl font-black text-zinc-900 tracking-tight">Database & Schema Intelligence</h1>
+          <h1 className="text-2xl font-black text-zinc-900 tracking-tight">Database & Supabase Studio</h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Automated database decision matrix, Supabase SQL migrations, RLS security policies, and RBAC mapping.
+            Real-time Supabase PostgreSQL synchronization, SaaS platform data persistence, SQL migrations, and RLS security policies.
           </p>
         </div>
 
         <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-800 px-3.5 py-2 rounded-xl text-xs font-semibold">
           <Server size={14} className="text-emerald-600" />
-          <span>Preferred Provider: Supabase (PostgreSQL)</span>
+          <span>Primary SaaS Engine: Supabase (PostgreSQL)</span>
         </div>
+      </div>
+
+      {/* Supabase Live Configurator & Sync Panel */}
+      <div className="bg-white rounded-2xl p-6 border border-emerald-500/20 shadow-[0_2px_12px_rgba(0,0,0,0.03)] space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-black/[0.04] pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-700">
+              <Database size={18} />
+            </div>
+            <div>
+              <h2 className="font-bold text-zinc-900 text-sm">Supabase PostgreSQL Connection & Data Persistence</h2>
+              <p className="text-xs text-zinc-500">Connect your Supabase project to store SaaS orchestrator projects, tasks, and audit logs.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSyncSupabase}
+              disabled={syncStatus.syncing}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+            >
+              <RefreshCw size={13} className={syncStatus.syncing ? "animate-spin" : ""} />
+              <span>{syncStatus.syncing ? 'Syncing...' : 'Sync Data to Supabase'}</span>
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-zinc-700 mb-1 flex items-center gap-1">
+              <Globe size={13} className="text-zinc-500" />
+              <span>Supabase Project URL (VITE_SUPABASE_URL)</span>
+            </label>
+            <input 
+              type="text"
+              value={supabaseUrl}
+              onChange={(e) => setSupabaseUrl(e.target.value)}
+              placeholder="https://xyzcompany.supabase.co"
+              className="w-full px-3.5 py-2 rounded-xl border border-black/[0.08] text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-zinc-50/80"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-zinc-700 mb-1 flex items-center gap-1">
+              <Key size={13} className="text-zinc-500" />
+              <span>Supabase Anon Public Key (VITE_SUPABASE_ANON_KEY)</span>
+            </label>
+            <input 
+              type="password"
+              value={supabaseAnonKey}
+              onChange={(e) => setSupabaseAnonKey(e.target.value)}
+              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              className="w-full px-3.5 py-2 rounded-xl border border-black/[0.08] text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500/20 bg-zinc-50/80"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSaveCredentials}
+              className="px-4 py-2 bg-zinc-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5"
+            >
+              <Check size={13} />
+              <span>Save & Test Connection</span>
+            </button>
+
+            <button
+              onClick={handleTestConnection}
+              disabled={connStatus.testing}
+              className="px-3.5 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5"
+            >
+              <RefreshCw size={13} className={connStatus.testing ? "animate-spin" : ""} />
+              <span>Test Ping</span>
+            </button>
+          </div>
+
+          <button
+            onClick={copyPlatformSql}
+            className="px-3.5 py-2 bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 text-xs font-bold rounded-xl transition-colors flex items-center gap-1.5"
+          >
+            {copiedPlatformSql ? <Check size={13} className="text-emerald-600" /> : <Terminal size={13} />}
+            <span>{copiedPlatformSql ? 'Copied Platform SQL!' : 'Copy SaaS Platform SQL Script'}</span>
+          </button>
+        </div>
+
+        {/* Status Banners */}
+        {connStatus.message && (
+          <div className={`p-3 rounded-xl text-xs font-medium border flex items-center gap-2 ${
+            connStatus.success 
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+              : 'bg-rose-50 text-rose-800 border-rose-200'
+          }`}>
+            {connStatus.success ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
+            <span>{connStatus.message}</span>
+          </div>
+        )}
+
+        {syncStatus.message && (
+          <div className={`p-3 rounded-xl text-xs font-medium border flex items-center gap-2 ${
+            syncStatus.success 
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+              : 'bg-amber-50 text-amber-800 border-amber-200'
+          }`}>
+            {syncStatus.success ? <CheckCircle2 size={15} /> : <XCircle size={15} />}
+            <span>{syncStatus.message}</span>
+          </div>
+        )}
       </div>
 
       {/* Interactive Requirement Tester */}

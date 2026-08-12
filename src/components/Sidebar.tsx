@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Bot, 
   Activity, 
@@ -16,7 +16,8 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { MOCK_DB, PLATFORM_STATE } from '@/services/gemini';
+import { MOCK_DB } from '@/services/gemini';
+import { saasDb } from '@/services/db';
 
 interface SidebarProps {
   activeTab: string;
@@ -24,8 +25,15 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
+  const [projectsCount, setProjectsCount] = useState<number>(() => saasDb.getProjects().length);
   const agentsCount = MOCK_DB.agents?.length || 0;
-  const projectsCount = PLATFORM_STATE.projects?.length || 0;
+
+  useEffect(() => {
+    const unsubscribe = saasDb.subscribe(() => {
+      setProjectsCount(saasDb.getProjects().length);
+    });
+    return unsubscribe;
+  }, []);
 
   const menuItems = [
     { id: 'chat', label: 'Orchestrator Console', icon: Bot, badge: null },
@@ -68,7 +76,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       </div>
       
       {/* Navigation */}
-      <nav className="flex-1 space-y-1.5 pr-2">
+      <nav className="flex-1 space-y-1.5 pr-2 overflow-y-auto scrollbar-hide">
         {menuItems.map((item) => {
           const isActive = activeTab === item.id;
           return (

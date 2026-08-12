@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FolderGit2, 
   Globe, 
@@ -18,20 +18,26 @@ import {
   Layers,
   ArrowRight
 } from 'lucide-react';
-import { PLATFORM_STATE } from '@/services/gemini';
+import { saasDb } from '@/services/db';
 import { PlatformProject } from '@/types';
 
 export const ProjectsView: React.FC = () => {
-  const [projects, setProjects] = useState<PlatformProject[]>(PLATFORM_STATE.projects);
+  const [projects, setProjects] = useState<PlatformProject[]>(() => saasDb.getProjects());
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectDesc, setNewProjectDesc] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
 
+  useEffect(() => {
+    const unsubscribe = saasDb.subscribe(() => {
+      setProjects(saasDb.getProjects());
+    });
+    return unsubscribe;
+  }, []);
+
   const handleCreateProject = () => {
     if (!newProjectName.trim()) return;
 
-    const newProj: PlatformProject = {
-      id: 'proj_' + Math.random().toString(36).substring(2, 9),
+    saasDb.addProject({
       name: newProjectName,
       description: newProjectDesc || 'Autonomous SaaS application project',
       framework: 'React + Vite',
@@ -41,14 +47,8 @@ export const ProjectsView: React.FC = () => {
       netlifySiteId: 'site_' + Math.random().toString(36).substring(2, 8),
       databaseRequired: true,
       databaseProvider: 'Supabase',
-      databaseStatus: 'Provisioned',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    const updated = [newProj, ...projects];
-    setProjects(updated);
-    PLATFORM_STATE.projects = updated;
+      databaseStatus: 'Provisioned'
+    });
 
     setNewProjectName('');
     setNewProjectDesc('');
