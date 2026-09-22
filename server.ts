@@ -18,7 +18,12 @@ const supabase = (supabaseUrl && supabaseServiceKey)
   : null;
 
 const app = express();
-app.use(express.json());
+app.use(express.json());\napp.use((req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
+
 
 app.get("/api/integrations/status", async (req, res) => {
   const status: any = {
@@ -701,14 +706,22 @@ IMPORTANT:
 });
 
 // --- PLATFORM DATABASE API ---
-app.get("/api/projects", async (req, res) => {
+function requireServerSecret(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const configured = process.env.ZEUS_INTERNAL_API_KEY;
+  if (!configured) return res.status(503).json({ error: "Server API authentication is not configured." });
+  const supplied = req.header("x-zeus-api-key");
+  if (!supplied || supplied !== configured) return res.status(401).json({ error: "Unauthorized." });
+  next();
+}
+
+app.get("/api/projects", requireServerSecret, async (req, res) => {
   if (!supabase) return res.status(501).json({ error: "Supabase not configured" });
   const { data, error } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
-app.post("/api/projects", async (req, res) => {
+app.post("/api/projects", requireServerSecret, async (req, res) => {
   if (!supabase) return res.status(501).json({ error: "Supabase not configured" });
   const project = req.body;
   const { data, error } = await supabase.from("projects").insert([project]).select().single();
@@ -716,14 +729,14 @@ app.post("/api/projects", async (req, res) => {
   res.json(data);
 });
 
-app.get("/api/audit-logs", async (req, res) => {
+app.get("/api/audit-logs", requireServerSecret, async (req, res) => {
   if (!supabase) return res.status(501).json({ error: "Supabase not configured" });
   const { data, error } = await supabase.from("audit_logs").select("*").order("timestamp", { ascending: false }).limit(50);
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
-app.post("/api/audit-logs", async (req, res) => {
+app.post("/api/audit-logs", requireServerSecret, async (req, res) => {
   if (!supabase) return res.status(501).json({ error: "Supabase not configured" });
   const log = req.body;
   const { data, error } = await supabase.from("audit_logs").insert([log]).select().single();
