@@ -378,7 +378,26 @@ async function getNetlifySite(siteId?: string) {
   return netlifyRequest(`/api/v1/sites/${encodeURIComponent(id)}`);
 }
 
+const HIGH_RISK_TOOLS = new Set(["provision_resources", "commit_and_deploy", "github_create_pull_request"]);
+
+function isHighRiskArgs(name: string, args: Record<string, any>) {
+  if (name === "github_write_file") {
+    const path = String(args.path || "").toLowerCase();
+    return path.includes(".github/workflows/") || path.includes("package.json") || path.includes("netlify.toml");
+  }
+  return HIGH_RISK_TOOLS.has(name);
+}
+
 async function executeTool(name: string, args: Record<string, any>) {
+  if (isHighRiskArgs(name, args) && process.env.ZEUS_REQUIRE_APPROVAL === "true" && !args.approvalToken) {
+    return {
+      success: false,
+      code: "APPROVAL_REQUIRED",
+      message: "This high-impact action requires approval before execution.",
+      action: name
+    };
+  }
+
   switch (name) {
     case "plan_project": {
       const projectName = String(args.projectName || "Untitled Project");
