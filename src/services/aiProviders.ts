@@ -1,3 +1,4 @@
+import { GoogleGenAI } from "@google/genai";
 export type AIProvider = "gemini" | "openai" | "anthropic";
 
 export interface ProviderTool {
@@ -234,5 +235,75 @@ export async function runProviderAgent(options: {
     throw new Error("AI tool loop exceeded the configured maximum rounds.");
   }
 
-  throw new Error("Gemini is handled by the native Gemini Interactions adapter.");
+  const ai = new GoogleGenAI({ apiKey: options.apiKey });
+  let interaction = await ai.interactions.create({
+    model: options.model,
+    input: options.input,
+    tools: options.tools,
+    system_instruction: options.systemInstruction
+  });
+
+  for (let round = 1; round <= maxRounds; round++) {
+    const calls: ToolCall[] = (interaction.steps || [])
+      .filter((step: any) => step?.type === "function_call")
+      .map((step: any) => ({
+        id: String(step.id),
+        name: String(step.name),
+        args: jsonArgs(step.arguments ?? step.args)
+      }));
+
+    if (!calls.length) {
+      const text = typeof (interaction as any).output_text === "string"
+        ? (interaction as any).output_text
+        : (interaction.steps || [])
+            .filter((step: any) => step?.type === "model_output")
+            .flatMap((step: any) => step?.content || [])
+            .filter((part: any) => part?.type === "text")
+            .map((part: any) => part.text || "")
+            .join("");
+      return {
+        text: text || "The orchestrator completed the request without a text response.",
+        rounds: round,
+        provider: options.provider,
+        model: options.model
+      };
+    }
+
+    const results = [];
+    for (const call of calls) {
+      try {
+        const result = await options.executeTool(call.name, call.args);
+        results.push({
+          type: "function_result",
+          name: call.name,
+          call_id: call.id,
+          result: [{ type: "text", text: JSON.stringify(result) }]
+        });
+      } catch (error: any) {
+        results.push({
+          type: "function_result",
+          name: call.name,
+          call_id: call.id,
+          result: [{
+            type: "text",
+            text: JSON.stringify({
+              success: false,
+              code: "TOOL_EXECUTION_ERROR",
+              message: error?.message || "Tool execution failed."
+            })
+          }]
+        });
+      }
+    }
+
+    interaction = await ai.interactions.create({
+      model: options.model,
+      previous_interaction_id: interaction.id,
+      input: results,
+      tools: options.tools,
+      system_instruction: options.systemInstruction
+    });
+  }
+
+  throw new Error("AI tool loop exceeded the configured maximum rounds.");
 }
