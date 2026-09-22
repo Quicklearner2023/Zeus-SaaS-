@@ -393,6 +393,66 @@ async function githubCreateBranch(owner: string, repo: string, branch: string) {
   });
 }
 
+async function githubCommitFiles(
+  owner: string,
+  repo: string,
+  files: Array<{ path: string; content: string }>,
+  message: string,
+  branch?: string
+) {
+  const repository = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`);
+  const targetBranch = branch || repository.default_branch || "main";
+  const ref = await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/ref/heads/${encodeURIComponent(targetBranch)}`
+  );
+  const parentSha = ref.object.sha;
+  const parentCommit = await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/commits/${encodeURIComponent(parentSha)}`
+  );
+
+  const tree = [];
+  for (const file of files) {
+    const path = String(file.path || "").trim();
+    if (!path || path.startsWith("/") || path.includes("..")) {
+      throw new Error(`Invalid project file path: ${path}`);
+    }
+    const blob = await githubRequest(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/blobs`,
+      {
+        method: "POST",
+        body: JSON.stringify({ content: String(file.content ?? ""), encoding: "utf-8" })
+      }
+    );
+    tree.push({ path, mode: "100644", type: "blob", sha: blob.sha });
+  }
+
+  const treeResult = await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees`,
+    {
+      method: "POST",
+      body: JSON.stringify({ base_tree: parentCommit.tree.sha, tree })
+    }
+  );
+
+  const commit = await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/commits`,
+    {
+      method: "POST",
+      body: JSON.stringify({ message, tree: treeResult.sha, parents: [parentSha] })
+    }
+  );
+
+  await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/refs/heads/${encodeURIComponent(targetBranch)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ sha: commit.sha, force: false })
+    }
+  );
+
+  return { branch: targetBranch, commitSha: commit.sha, commitUrl: commit.html_url };
+}
+
 async function githubCreatePullRequest(owner: string, repo: string, title: string, body: string, head: string, base: string) {
   return githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls`, {
     method: "POST",
@@ -711,15 +771,19 @@ async function executeTool(name: string, args: Record<string, any>) {
       const files = Array.isArray(args.files) ? args.files : [];
       const commitMessage = String(args.commitMessage || "Update project");
 
+      let commitResult: any = null;
       if (files.length > 0) {
         if (!owner || !repo) throw new Error("This project has no GitHub repository associated with it.");
-        for (const file of files) {
-          const path = String(file?.path || "").trim();
-          if (!path || path.startsWith("/") || path.includes("..")) {
-            throw new Error(`Invalid project file path: ${path}`);
-          }
-          await githubWriteFile(owner, repo, path, String(file.content ?? ""), commitMessage, branch || undefined);
-        }
+        commitResult = await githubCommitFiles(
+          owner,
+          repo,
+          files.map((file: any) => ({
+            path: String(file?.path || "").trim(),
+            content: String(file?.content ?? "")
+          })),
+          commitMessage,
+          branch || undefined
+        );
       }
 
       let siteId = project?.netlify_site_id ? String(project.netlify_site_id) : "";
@@ -776,7 +840,7 @@ async function executeTool(name: string, args: Record<string, any>) {
         } : null,
         message: files.length > 0
           ? (ready
-            ? `Committed ${files.length} project file(s) and verified the resulting Netlify deployment.`
+            ? `Committed ${files.length} project file(s) in ${commitResult?.commitSha || "the latest commit"} and verified the resulting Netlify deployment.`
             : `Committed ${files.length} project file(s); the resulting Netlify deployment is currently ${state}.`)
           : ready
           ? "The latest real Netlify deployment is ready."
