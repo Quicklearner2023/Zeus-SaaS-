@@ -270,6 +270,22 @@ async function netlifyRequest(pathname: string, init: RequestInit = {}) {
   return data;
 }
 
+async function getProjectRecord(projectId: string) {
+  if (!supabase || !projectId) return null;
+  const { data, error } = await supabase.from("projects").select("*").eq("id", projectId).maybeSingle();
+  if (error) throw new Error(`Project lookup failed: ${error.message}`);
+  return data;
+}
+
+async function getGitHubRepository(owner: string, repo: string) {
+  try {
+    return await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`);
+  } catch (error: any) {
+    if (String(error?.message || "").includes("Not Found")) return null;
+    throw error;
+  }
+}
+
 async function createGitHubRepository(name: string, description = "Created by Zeus Orchestrator", isPrivate = true) {
   return githubRequest("/user/repos", {
     method: "POST",
@@ -501,47 +517,105 @@ async function executeTool(name: string, args: Record<string, any>) {
       const repoName = String(args.githubRepoName || "").trim();
       if (!repoName) throw new Error("githubRepoName is required.");
 
-      const githubRepo = await createGitHubRepository(
-        repoName,
-        String(args.repositoryDescription || `Zeus project ${projectId || repoName}`),
-        args.privateRepository !== false
-      );
-      const owner = githubRepo.owner?.login;
-      if (!owner) throw new Error("GitHub did not return the repository owner.");
+      const existingProject = await getProjectRecord(projectId);
+      const configuredOwner = String(existingProject?.github_repo_name || "").split("/")[0];
+      const owner = configuredOwner || (await githubRequest("/user")).login;
+      let githubRepo = null;
 
+      if (existingProject?.github_repo_name) {
+        const parts = String(existingProject.github_repo_name).split("/");
+        githubRepo = await getGitHubRepository(parts[0], parts[1]);
+      }
+      if (!githubRepo) {
+        githubRepo = await getGitHubRepository(owner, repoName);
+      }
+      if (!githubRepo) {
+        githubRepo = await createGitHubRepository(
+          repoName,
+          String(args.repositoryDescription || `Zeus project ${projectId || repoName}`),
+          args.privateRepository !== false
+        );
+      }
+
+      const resolvedOwner = githubRepo.owner?.login || owner;
       let netlifySite: any = null;
       let deployKey: any = null;
       let webhook: any = null;
+      const existingSiteId = existingProject?.netlify_site_id ? String(existingProject.netlify_site_id) : "";
 
-      if (args.netlifySiteName) {
-        // Netlify's repository integration requires a Netlify deploy key and the
-        // matching public key to be installed on the GitHub repository.
-        deployKey = await createNetlifyDeployKey();
-        if (!deployKey?.id || !deployKey?.public_key) {
-          throw new Error("Netlify did not return a usable deploy key.");
-        }
-        await githubAddDeployKey(owner, githubRepo.name, `Netlify - ${args.netlifySiteName}`, deployKey.public_key);
-
-        netlifySite = await createNetlifySite(String(args.netlifySiteName), {
-          provider: "github",
-          id: githubRepo.id,
-          repo: githubRepo.full_name,
-          private: githubRepo.private,
-          branch: githubRepo.default_branch || "main",
-          cmd: "npm run build",
-          dir: "dist",
-          deploy_key_id: deployKey.id
-        });
-
-        // Tell Netlify about future GitHub pushes when linking through the API.
+      if (existingSiteId) {
         try {
-          webhook = await githubCreateNetlifyWebhook(owner, githubRepo.name);
-        } catch (hookError: any) {
-          console.warn("[provision] Netlify GitHub webhook could not be created:", hookError?.message || hookError);
+          netlifySite = await getNetlifySite(existingSiteId);
+        } catch (error: any) {
+          console.warn("[provision] stored Netlify site is unavailable:", error?.message || error);
         }
       }
 
-      let projectUpdate: any = null;
+      if (!netlifySite && args.netlifySiteName) {
+        try {
+          deployKey = await createNetlifyDeployKey();
+          if (!deployKey?.id || !deployKey?.public_key) {
+            throw new Error("Netlify did not return a usable deploy key.");
+          }
+
+          await githubAddDeployKey(
+            resolvedOwner,
+            githubRepo.name,
+            `Netlify - ${args.netlifySiteName}`,
+            deployKey.public_key
+          );
+
+          netlifySite = await createNetlifySite(String(args.netlifySiteName), {
+            provider: "github",
+            id: githubRepo.id,
+            repo: githubRepo.full_name,
+            private: githubRepo.private,
+            branch: githubRepo.default_branch || "main",
+            cmd: "npm run build",
+            dir: "dist",
+            deploy_key_id: deployKey.id
+          });
+
+          try {
+            webhook = await githubCreateNetlifyWebhook(resolvedOwner, githubRepo.name);
+          } catch (hookError: any) {
+            console.warn("[provision] Netlify GitHub webhook could not be created:", hookError?.message || hookError);
+          }
+        } catch (error: any) {
+          const message = error?.message || "Netlify provisioning failed.";
+          if (supabase && projectId) {
+            await supabase.from("projects").update({
+              github_repo_url: githubRepo.html_url,
+              github_repo_name: githubRepo.full_name,
+              infrastructure_status: "Partially Provisioned"
+            }).eq("id", projectId);
+            await supabase.from("audit_logs").insert([{
+              user_id: null,
+              user_name: "Lead Architect",
+              action: "PROVISION_RESOURCES_PARTIAL",
+              target_type: "project",
+              target_name: projectId || repoName,
+              details: JSON.stringify({ githubRepo: githubRepo.full_name, error: message }),
+              timestamp: new Date().toISOString()
+            }]);
+          }
+          return {
+            success: false,
+            code: "PARTIAL_PROVISIONING",
+            projectId,
+            github: {
+              id: githubRepo.id,
+              name: githubRepo.full_name,
+              url: githubRepo.html_url,
+              private: githubRepo.private,
+              defaultBranch: githubRepo.default_branch
+            },
+            netlify: null,
+            message: `GitHub was provisioned, but Netlify provisioning did not complete: ${message}`
+          };
+        }
+      }
+
       if (supabase && projectId) {
         const { data, error } = await supabase.from("projects").update({
           github_repo_url: githubRepo.html_url,
@@ -550,11 +624,8 @@ async function executeTool(name: string, args: Record<string, any>) {
           netlify_site_url: netlifySite?.ssl_url || netlifySite?.url || null,
           infrastructure_status: netlifySite ? "Provisioned" : "GitHub Provisioned"
         }).eq("id", projectId).select().maybeSingle();
-        if (error) console.warn("[provision] project metadata update skipped:", error.message);
-        projectUpdate = data;
-      }
+        if (error) throw new Error(`Project metadata update failed: ${error.message}`);
 
-      if (supabase) {
         await supabase.from("audit_logs").insert([{
           user_id: null,
           user_name: "Lead Architect",
@@ -565,10 +636,37 @@ async function executeTool(name: string, args: Record<string, any>) {
             githubRepo: githubRepo.full_name,
             netlifySiteId: netlifySite?.id || null,
             netlifyLinked: !!netlifySite,
-            webhookCreated: !!webhook
+            webhookCreated: !!webhook,
+            reused: !!existingProject
           }),
           timestamp: new Date().toISOString()
         }]);
+
+        return {
+          success: true,
+          projectId,
+          github: {
+            id: githubRepo.id,
+            name: githubRepo.full_name,
+            owner: resolvedOwner,
+            url: githubRepo.html_url,
+            private: githubRepo.private,
+            defaultBranch: githubRepo.default_branch
+          },
+          netlify: netlifySite ? {
+            id: netlifySite.id,
+            name: netlifySite.name,
+            url: netlifySite.ssl_url || netlifySite.url,
+            linkedRepository: githubRepo.full_name,
+            branch: githubRepo.default_branch || "main",
+            deployKeyConfigured: !!deployKey || !!existingSiteId,
+            webhookConfigured: !!webhook
+          } : null,
+          project: data,
+          message: netlifySite
+            ? "Infrastructure is provisioned. Existing resources were reused when available; verify the resulting deployment after project files are committed."
+            : "GitHub infrastructure is provisioned."
+        };
       }
 
       return {
@@ -577,7 +675,7 @@ async function executeTool(name: string, args: Record<string, any>) {
         github: {
           id: githubRepo.id,
           name: githubRepo.full_name,
-          owner,
+          owner: resolvedOwner,
           url: githubRepo.html_url,
           private: githubRepo.private,
           defaultBranch: githubRepo.default_branch
@@ -585,17 +683,9 @@ async function executeTool(name: string, args: Record<string, any>) {
         netlify: netlifySite ? {
           id: netlifySite.id,
           name: netlifySite.name,
-          url: netlifySite.ssl_url || netlifySite.url,
-          linkedRepository: githubRepo.full_name,
-          branch: githubRepo.default_branch || "main",
-          initialDeployId: netlifySite.deploy_id || null,
-          deployKeyConfigured: true,
-          webhookConfigured: !!webhook
+          url: netlifySite.ssl_url || netlifySite.url
         } : null,
-        project: projectUpdate,
-        message: netlifySite
-          ? "GitHub repository and Netlify continuous-deployment site were provisioned and linked. Commit project files to the configured branch, then verify the resulting Netlify deployment."
-          : "GitHub repository was provisioned successfully."
+        message: "Infrastructure is provisioned. Configure Supabase to persist project metadata and audit history."
       };
     }
 
