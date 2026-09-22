@@ -842,10 +842,30 @@ IMPORTANT:
 // --- PLATFORM DATABASE API ---
 function requireServerSecret(req: express.Request, res: express.Response, next: express.NextFunction) {
   const configured = process.env.ZEUS_INTERNAL_API_KEY;
-  if (!configured) return res.status(503).json({ error: "Server API authentication is not configured." });
   const supplied = req.header("x-zeus-api-key");
-  if (!supplied || supplied !== configured) return res.status(401).json({ error: "Unauthorized." });
-  next();
+
+  // Server-to-server callers authenticate with the private key.
+  if (configured && supplied === configured) return next();
+
+  // Browser calls are restricted to the same origin so the dashboard can use
+  // the API without exposing a server secret to client JavaScript. This is
+  // CSRF protection, not user authentication; Supabase Auth/RBAC remains a
+  // later security layer.
+  const origin = req.header("origin");
+  if (origin) {
+    try {
+      const originUrl = new URL(origin);
+      const host = req.get("host");
+      const forwardedHost = req.header("x-forwarded-host");
+      if (originUrl.host === host || originUrl.host === forwardedHost) return next();
+    } catch {}
+  }
+
+  if (!configured && (req.path.startsWith("/api/projects") || req.path.startsWith("/api/audit-logs"))) {
+    return res.status(403).json({ error: "Same-origin browser access or ZEUS_INTERNAL_API_KEY is required." });
+  }
+
+  return res.status(401).json({ error: "Unauthorized." });
 }
 
 app.get("/api/projects", requireServerSecret, async (req, res) => {
