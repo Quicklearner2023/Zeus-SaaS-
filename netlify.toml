@@ -9,6 +9,7 @@
 
 [functions]
   directory = "netlify/functions"
+  node_bundler = "esbuild"
 
 # API Redirect: Routes all /api requests to the serverless function
 [[redirects]]
