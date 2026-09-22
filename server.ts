@@ -4,6 +4,8 @@ import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import serverless from "serverless-http";
+import { evaluateDatabaseRequirements } from "./src/services/dbIntelligence";
+import { configuredProviders, resolveProvider, runProviderAgent } from "./src/services/aiProviders";
 
 dotenv.config();
 
@@ -21,6 +23,7 @@ app.use(express.json());
 app.get("/api/integrations/status", async (req, res) => {
   const status: any = {
     timestamp: new Date().toISOString(),
+    ai: configuredProviders(),
     gemini: !!process.env.GEMINI_API_KEY,
     github: { configured: !!process.env.GITHUB_TOKEN },
     netlify: { configured: !!process.env.NETLIFY_AUTH_TOKEN, siteConfigured: !!process.env.NETLIFY_SITE_ID },
@@ -637,15 +640,25 @@ app.post("/api/chat", async (req, res) => {
       return res.status(400).json({ error: "newMessage is required." });
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const provider = resolveProvider();
+    const apiKey = provider === "gemini"
+      ? process.env.GEMINI_API_KEY
+      : provider === "openai"
+        ? process.env.OPENAI_API_KEY
+        : process.env.ANTHROPIC_API_KEY;
+
     if (!apiKey) {
-      console.error("[config] GEMINI_API_KEY is unavailable to the Netlify function runtime.");
       return res.status(500).json({
-        error: "Gemini is not configured on the server. The Netlify function cannot access GEMINI_API_KEY."
+        error: `AI provider "${provider}" is selected but its API key is not configured.`
       });
     }
 
-    const ai = new GoogleGenAI({ apiKey });
+    const models: Record<string, string> = {
+      gemini: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+      openai: process.env.OPENAI_MODEL || "gpt-5-mini",
+      anthropic: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5"
+    };
+
     const systemInstruction = `You are the Lead Orchestrator Agent for a personal SaaS development suite.
 You plan, develop and deploy web applications.
 
@@ -658,66 +671,24 @@ IMPORTANT:
 - Do not invent repositories, deployments, database resources, URLs, commits or pull requests.
 - Prefer real data and real tool results over placeholder content.`;
 
-    let interaction = await ai.interactions.create({
-      model: "gemini-3.6-flash",
+    const result = await runProviderAgent({
+      provider,
+      model: models[provider],
+      apiKey: String(apiKey),
       input: newMessage,
+      systemInstruction,
       tools: TOOL_DEFINITIONS,
-      system_instruction: systemInstruction
+      executeTool,
+      maxToolRounds: 8
     });
 
-    // Real Interactions API function-calling loop:
-    // Gemini -> function_call -> server executes -> function_result -> Gemini.
-    // Repeat because Gemini may chain multiple tools.
-    const maxToolRounds = 8;
-    for (let round = 0; round < maxToolRounds; round++) {
-      const calls = (interaction.steps || []).filter((step: any) => step.type === "function_call");
-      if (!calls.length) break;
-
-      const results = [];
-      for (const call of calls) {
-        const name = String(call.name);
-        const args = (call.arguments || call.args || {}) as Record<string, any>;
-        console.log(`[tool] ${name}`, JSON.stringify(args));
-
-        try {
-          const result = await executeTool(name, args);
-          results.push({
-            type: "function_result",
-            name,
-            call_id: call.id,
-            result: [{ type: "text", text: JSON.stringify(result) }]
-          });
-        } catch (toolError: any) {
-          const errorResult = {
-            success: false,
-            code: "TOOL_EXECUTION_ERROR",
-            message: toolError?.message || "Tool execution failed."
-          };
-          console.error(`[tool:error] ${name}`, toolError);
-          results.push({
-            type: "function_result",
-            name,
-            call_id: call.id,
-            result: [{ type: "text", text: JSON.stringify(errorResult) }]
-          });
-        }
-      }
-
-      interaction = await ai.interactions.create({
-        model: "gemini-3.6-flash",
-        previous_interaction_id: interaction.id,
-        input: results,
-        tools: TOOL_DEFINITIONS,
-        system_instruction: systemInstruction
-      });
-    }
-
-    const outputText = extractText(interaction) || "The orchestrator completed the request without a text response.";
     res.json({
       role: "model",
-      parts: [{ text: outputText }],
+      parts: [{ text: result.text }],
       timestamp: new Date().toISOString(),
-      interactionId: interaction.id
+      provider: result.provider,
+      model: result.model,
+      toolRounds: result.rounds
     });
   } catch (error: any) {
     console.error("[server] AI Orchestrator error:", error);
