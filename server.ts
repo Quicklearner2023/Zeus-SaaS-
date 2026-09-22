@@ -851,6 +851,9 @@ function requireServerSecret(req: express.Request, res: express.Response, next: 
   // the API without exposing a server secret to client JavaScript. This is
   // CSRF protection, not user authentication; Supabase Auth/RBAC remains a
   // later security layer.
+  const fetchSite = req.header("sec-fetch-site");
+  if (fetchSite === "same-origin" || fetchSite === "same-site") return next();
+
   const origin = req.header("origin");
   if (origin) {
     try {
