@@ -133,7 +133,19 @@ const TOOL_DEFINITIONS = [
       properties: {
         projectId: { type: "string" },
         commitMessage: { type: "string" },
-        branch: { type: "string" }
+        branch: { type: "string" },
+        files: {
+          type: "array",
+          description: "Optional project files to create or update before deployment.",
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string" },
+              content: { type: "string" }
+            },
+            required: ["path", "content"]
+          }
+        }
       },
       required: ["projectId", "commitMessage"]
     }
@@ -694,6 +706,22 @@ async function executeTool(name: string, args: Record<string, any>) {
       const branch = String(args.branch || "").trim();
       const project = await getProjectRecord(projectId);
 
+      const repoFullName = String(project?.github_repo_name || "");
+      const [owner, repo] = repoFullName.split("/");
+      const files = Array.isArray(args.files) ? args.files : [];
+      const commitMessage = String(args.commitMessage || "Update project");
+
+      if (files.length > 0) {
+        if (!owner || !repo) throw new Error("This project has no GitHub repository associated with it.");
+        for (const file of files) {
+          const path = String(file?.path || "").trim();
+          if (!path || path.startsWith("/") || path.includes("..")) {
+            throw new Error(`Invalid project file path: ${path}`);
+          }
+          await githubWriteFile(owner, repo, path, String(file.content ?? ""), commitMessage, branch || undefined);
+        }
+      }
+
       let siteId = project?.netlify_site_id ? String(project.netlify_site_id) : "";
       if (!siteId && process.env.NETLIFY_SITE_ID) siteId = String(process.env.NETLIFY_SITE_ID);
       if (!siteId) throw new Error("No Netlify site is associated with this project.");
@@ -746,7 +774,11 @@ async function executeTool(name: string, args: Record<string, any>) {
           commitRef: deploy.commit_ref || null,
           commitUrl: deploy.commit_url || null
         } : null,
-        message: ready
+        message: files.length > 0
+          ? (ready
+            ? `Committed ${files.length} project file(s) and verified the resulting Netlify deployment.`
+            : `Committed ${files.length} project file(s); the resulting Netlify deployment is currently ${state}.`)
+          : ready
           ? "The latest real Netlify deployment is ready."
           : failed
             ? `The latest Netlify deployment failed: ${deploy?.error_message || "unknown Netlify error"}`
