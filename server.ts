@@ -20,6 +20,11 @@ const supabase = (supabaseUrl && supabaseServiceKey)
 const app = express();
 app.use(express.json());
 
+app.use((req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
+
 app.get("/api/integrations/status", async (req, res) => {
   const status: any = {
     timestamp: new Date().toISOString(),
@@ -373,7 +378,20 @@ async function getNetlifySite(siteId?: string) {
   return netlifyRequest(`/api/v1/sites/${encodeURIComponent(id)}`);
 }
 
+const HIGH_RISK_TOOLS = new Set(["provision_resources", "commit_and_deploy", "github_create_pull_request"]);
+
+function isHighRiskArgs(name: string, args: Record<string, any>) {
+  if (name === "github_write_file") {
+    const path = String(args.path || "").toLowerCase();
+    return path.includes(".github/workflows/") || path.includes("package.json") || path.includes("netlify.toml");
+  }
+  return HIGH_RISK_TOOLS.has(name);
+}
+
 async function executeTool(name: string, args: Record<string, any>) {
+  if (isHighRiskArgs(name, args) && process.env.ZEUS_REQUIRE_APPROVAL === "true" && !args.approvalToken) {
+    return { success: false, code: "APPROVAL_REQUIRED", message: "This high-impact action requires approval before execution.", action: name };
+  }
   switch (name) {
     case "plan_project": {
       const projectName = String(args.projectName || "Untitled Project");
@@ -701,14 +719,22 @@ IMPORTANT:
 });
 
 // --- PLATFORM DATABASE API ---
-app.get("/api/projects", async (req, res) => {
+function requireServerSecret(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const configured = process.env.ZEUS_INTERNAL_API_KEY;
+  if (!configured) return res.status(503).json({ error: "Server API authentication is not configured." });
+  const supplied = req.header("x-zeus-api-key");
+  if (!supplied || supplied !== configured) return res.status(401).json({ error: "Unauthorized." });
+  next();
+}
+
+app.get("/api/projects", requireServerSecret, async (req, res) => {
   if (!supabase) return res.status(501).json({ error: "Supabase not configured" });
   const { data, error } = await supabase.from("projects").select("*").order("created_at", { ascending: false });
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
-app.post("/api/projects", async (req, res) => {
+app.post("/api/projects", requireServerSecret, async (req, res) => {
   if (!supabase) return res.status(501).json({ error: "Supabase not configured" });
   const project = req.body;
   const { data, error } = await supabase.from("projects").insert([project]).select().single();
@@ -716,14 +742,14 @@ app.post("/api/projects", async (req, res) => {
   res.json(data);
 });
 
-app.get("/api/audit-logs", async (req, res) => {
+app.get("/api/audit-logs", requireServerSecret, async (req, res) => {
   if (!supabase) return res.status(501).json({ error: "Supabase not configured" });
   const { data, error } = await supabase.from("audit_logs").select("*").order("timestamp", { ascending: false }).limit(50);
   if (error) return res.status(500).json({ error: error.message });
   res.json(data);
 });
 
-app.post("/api/audit-logs", async (req, res) => {
+app.post("/api/audit-logs", requireServerSecret, async (req, res) => {
   if (!supabase) return res.status(501).json({ error: "Supabase not configured" });
   const log = req.body;
   const { data, error } = await supabase.from("audit_logs").insert([log]).select().single();
