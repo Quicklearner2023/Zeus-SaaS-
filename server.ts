@@ -73,11 +73,14 @@ app.get("/api/integrations/status", async (req, res) => {
 
 app.get("/api/config-status", (req, res) => {
   const status = {
-    gemini: !!process.env.GEMINI_API_KEY,
+    ai: configuredProviders(),
+    selectedProvider: (() => {
+      try { return resolveProvider(); } catch { return null; }
+    })(),
     github: !!process.env.GITHUB_TOKEN,
     netlify: !!process.env.NETLIFY_AUTH_TOKEN,
     netlify_site: !!process.env.NETLIFY_SITE_ID,
-    supabase: !!process.env.SUPABASE_SERVICE_ROLE_KEY && !!process.env.SUPABASE_URL,
+    supabase: !!process.env.SUPABASE_SERVICE_ROLE_KEY && !!(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL),
     timestamp: new Date()
   };
   res.json(status);
