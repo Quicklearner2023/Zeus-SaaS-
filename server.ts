@@ -76,6 +76,15 @@ app.get("/api/integrations/status", async (req, res) => {
   res.json(status);
 });
 
+app.get("/api/health", (req, res) => {
+  res.json({
+    ok: true,
+    service: "zeus-orchestrator",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development"
+  });
+});
+
 app.get("/api/config-status", (req, res) => {
   const status = {
     ai: configuredProviders(),
