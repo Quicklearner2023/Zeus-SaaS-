@@ -13,6 +13,7 @@
 
 # API Redirect: Routes all /api requests to the serverless function
 [[redirects]]
+  force = true
   from = "/api/*"
   to = "/.netlify/functions/server/api/:splat"
   status = 200
