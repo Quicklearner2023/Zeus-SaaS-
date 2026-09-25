@@ -912,7 +912,7 @@ app.post("/api/chat", async (req, res) => {
     }
 
     const models: Record<string, string> = {
-      gemini: process.env.GEMINI_MODEL || "gemini-3.6-flash",
+      gemini: process.env.GEMINI_MODEL || "gemini-3.8-flash",
       openai: process.env.OPENAI_MODEL || "gpt-5-mini",
       anthropic: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5"
     };
