@@ -109,8 +109,17 @@ export async function sendMessageToAgentStream(
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error ? `${errorData.error}${errorData.errorId ? ` [${errorData.errorId}]` : ''}${errorData.code ? ` (${errorData.code})` : ''}` : `Server error: ${response.status} ${response.statusText || 'Unknown Error'}`);
+      const raw = await response.text().catch(() => "");
+      let errorData: any = {};
+      try { errorData = raw ? JSON.parse(raw) : {}; } catch { errorData = { error: raw }; }
+      const detail = errorData.error || errorData.message || `HTTP ${response.status}`;
+      const suffix = [
+        errorData.errorId ? ` [${errorData.errorId}]` : "",
+        errorData.code ? ` (${errorData.code})` : "",
+        errorData.type ? ` <${errorData.type}>` : "",
+        errorData.build ? ` {${errorData.build}}` : ""
+      ].join("");
+      throw new Error(`${detail}${suffix || `Server error: ${response.status} ${response.statusText || "Unknown Error"}`}`);
     }
 
     const data = await response.json();
