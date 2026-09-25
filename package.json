@@ -7,7 +7,10 @@
     "build": "vite build && mkdir -p netlify/functions && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=netlify/functions/server.cjs",
     "start": "node netlify/functions/server.cjs",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "build:host": "npm run build && esbuild server-host.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=server-host.cjs",
+    "start:host": "NODE_ENV=production node server-host.cjs",
+    "test:host": "npm run build:host && NODE_ENV=production node server-host.cjs"
   },
   "dependencies": {
     "@google/genai": "^2.16.0",
