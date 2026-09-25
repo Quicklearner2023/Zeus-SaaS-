@@ -3,13 +3,15 @@ import { Activity, FileText, Lock, ShieldCheck, Users } from 'lucide-react';
 import { saasDb } from '@/services/db';
 import { PlatformRole, UserProfile, AuditLog } from '@/types';
 
+const API_BASE = import.meta.env.PROD ? '/.netlify/functions/server' : '';
+
 export const GovernanceView: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>(() => saasDb.getUsers());
   const [logs, setLogs] = useState<AuditLog[]>(() => saasDb.getAuditLogs());
   const [status, setStatus] = useState<any>(null);
 
   useEffect(() => {
-    fetch('/api/integrations/status').then(r => r.json()).then(setStatus).catch(() => setStatus({}));
+    fetch(`${API_BASE}/api/integrations/status`).then(r => r.json()).then(setStatus).catch(() => setStatus({}));
     return saasDb.subscribe(() => {
       setUsers(saasDb.getUsers());
       setLogs(saasDb.getAuditLogs());
