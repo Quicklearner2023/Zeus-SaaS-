@@ -1,47 +1,28 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
-*/
-
 import React from 'react';
-import { Bot, Layers, Globe, FolderGit2, Database, ShieldCheck } from 'lucide-react';
+import { Activity, Bot, Database, FolderGit2, Globe2, Layers3 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface BottomNavProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-}
+interface BottomNavProps { activeTab: string; setActiveTab: (tab: string) => void; }
 
 export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, setActiveTab }) => {
-  const menuItems = [
+  const items = [
     { id: 'chat', label: 'Console', icon: Bot },
     { id: 'projects', label: 'Projects', icon: FolderGit2 },
-    { id: 'database', label: 'Database', icon: Database },
-    { id: 'agents', label: 'Agents', icon: Layers },
-    { id: 'netlify', label: 'Netlify', icon: Globe },
-    { id: 'governance', label: 'Governance', icon: ShieldCheck },
+    { id: 'agents', label: 'Agents', icon: Layers3 },
+    { id: 'database', label: 'Data', icon: Database },
+    { id: 'netlify', label: 'Deploy', icon: Globe2 },
+    { id: 'dashboards', label: 'Stats', icon: Activity },
   ];
-
-  return (
-    <div className="md:hidden flex items-center justify-around bg-white border-t border-black/5 px-2 py-2 shrink-0 pb-safe z-50 shadow-lg">
-      {menuItems.map((item) => {
-        const isActive = activeTab === item.id;
-        return (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={cn(
-              "flex flex-col items-center gap-1 py-1 px-3 rounded-2xl transition-all",
-              isActive 
-                ? "text-black bg-zinc-100 font-semibold" 
-                : "text-zinc-400 hover:text-zinc-600 font-medium"
-            )}
-          >
-            <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} />
-            <span className="text-[10px] tracking-tight">{item.label}</span>
-          </button>
-        );
+  return <div className="md:hidden fixed bottom-0 inset-x-0 z-50 px-2 pb-2 pt-1 bg-white/95 backdrop-blur-xl border-t border-zinc-200/80 shadow-[0_-8px_24px_rgba(0,0,0,0.06)]">
+    <div className="flex items-center justify-around">
+      {items.map(item => {
+        const active = activeTab === item.id;
+        return <button key={item.id} onClick={() => setActiveTab(item.id)}
+          className={cn("min-w-12 px-2 py-1.5 rounded-xl flex flex-col items-center gap-0.5 transition-all", active ? "text-zinc-950 bg-zinc-100" : "text-zinc-400")}>
+          <item.icon size={17} strokeWidth={active ? 2.5 : 2}/>
+          <span className="text-[9px] font-bold">{item.label}</span>
+        </button>;
       })}
     </div>
-  );
+  </div>;
 };
