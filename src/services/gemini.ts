@@ -21,6 +21,10 @@ import {
 // Client-side AI bridge. Direct SDK usage moved to server-side for security.
 export const MODEL_NAME = "gemini-3.8-flash";
 
+// In production call the function directly. Netlify's /api/* proxy can time out
+// long-running agent requests before the function itself reaches its 60s limit.
+const API_BASE = import.meta.env.PROD ? '/.netlify/functions/server' : '';
+
 export interface ChatMessage {
   role: 'user' | 'model' | 'system';
   parts: Array<{ text: string }>;
@@ -102,7 +106,7 @@ export async function sendMessageToAgentStream(
   notify(false, "");
 
   try {
-    const response = await fetch('/api/chat', {
+    const response = await fetch(`${API_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ history, newMessage })
@@ -154,7 +158,7 @@ export async function sendMessageToAgent(
   onToolCall?: (toolCall: ToolCall) => void
 ): Promise<ChatMessage[]> {
   try {
-    const response = await fetch('/api/chat', {
+    const response = await fetch(`${API_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ history, newMessage })
