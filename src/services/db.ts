@@ -15,6 +15,8 @@ import {
   UserProfile 
 } from '@/types';
 
+const API_BASE = import.meta.env.PROD ? '/.netlify/functions/server' : '';
+
 class SaaSDatabaseManager {
   private projects: PlatformProject[] = [];
   private users: UserProfile[] = [];
@@ -31,8 +33,8 @@ class SaaSDatabaseManager {
     this.isLoading = true;
     try {
       const [projectsRes, logsRes] = await Promise.all([
-        fetch('/api/projects'),
-        fetch('/api/audit-logs')
+        fetch(`${API_BASE}/api/projects`),
+        fetch(`${API_BASE}/api/audit-logs`)
       ]);
 
       if (projectsRes.ok) {
@@ -67,7 +69,7 @@ class SaaSDatabaseManager {
   }
 
   public async addProject(project: Omit<PlatformProject, 'id' | 'createdAt' | 'updatedAt'>): Promise<PlatformProject> {
-    const res = await fetch('/api/projects', {
+    const res = await fetch(`${API_BASE}/api/projects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(project)
@@ -134,7 +136,7 @@ class SaaSDatabaseManager {
       timestamp: new Date().toISOString()
     };
 
-    const res = await fetch('/api/audit-logs', {
+    const res = await fetch(`${API_BASE}/api/audit-logs`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(logData)
