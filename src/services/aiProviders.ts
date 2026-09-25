@@ -49,16 +49,52 @@ function textFromAnthropic(content: any[]): string {
     .join("");
 }
 
-async function requestJson(url: string, init: RequestInit, provider: string) {
-  const response = await fetch(url, init);
+function providerError(error: any, provider: string, stage: string) {
+  const status = error?.status ?? error?.statusCode ?? error?.httpStatus ?? error?.response?.status ?? null;
+  const code = error?.code ?? error?.response?.data?.error?.code ?? null;
+  const message =
+    error?.message ||
+    error?.response?.data?.error?.message ||
+    error?.response?.data?.message ||
+    String(error || "Unknown provider error");
+  const detail = [`provider=${provider}`, `stage=${stage}`, status ? `status=${status}` : "", code ? `code=${code}` : ""]
+    .filter(Boolean)
+    .join(" ");
+  const wrapped = new Error(`${provider} request failed (${detail }): ${message}`);
+  (wrapped as any).provider = provider;
+  (wrapped as any).stage = stage;
+  (wrapped as any).status = status;
+  (wrapped as any).code = code;
+  (wrapped as any).cause = error;
+  return wrapped;
+}
+
+async function requestJson(url: string, init: RequestInit, provider: string, stage = "request") {
+  let response: Response;
+  try {
+    response = await fetch(url, init);
+  } catch (error) {
+    throw providerError(error, provider, stage);
+  }
   const raw = await response.text();
   let body: any = null;
   try { body = raw ? JSON.parse(raw) : null; } catch { body = raw; }
   if (!response.ok) {
     const message = body?.error?.message || body?.message || `${provider} API returned ${response.status}`;
-    throw new Error(`${provider}: ${message}`);
+    const error = new Error(message);
+    (error as any).status = response.status;
+    (error as any).code = body?.error?.code || body?.code || null;
+    throw providerError(error, provider, stage);
   }
   return body;
+}
+
+async function geminiCreateInteraction(ai: any, request: any, stage: string) {
+  try {
+    return await ai.interactions.create(request);
+  } catch (error) {
+    throw providerError(error, "Gemini", stage);
+  }
 }
 
 export function configuredProviders(env: NodeJS.ProcessEnv = process.env) {
@@ -236,12 +272,12 @@ export async function runProviderAgent(options: {
 
   const { GoogleGenAI } = await import("@google/genai");
   const ai = new GoogleGenAI({ apiKey: options.apiKey });
-  let interaction = await ai.interactions.create({
+  let interaction = await geminiCreateInteraction(ai, {
     model: options.model,
     input: options.input,
     tools: options.tools,
     system_instruction: options.systemInstruction
-  });
+  }, "initial_interaction");
 
   for (let round = 1; round <= maxRounds; round++) {
     const calls: ToolCall[] = (interaction.steps || [])
@@ -296,13 +332,13 @@ export async function runProviderAgent(options: {
       }
     }
 
-    interaction = await ai.interactions.create({
+    interaction = await geminiCreateInteraction(ai, {
       model: options.model,
       previous_interaction_id: interaction.id,
       input: results,
       tools: options.tools,
       system_instruction: options.systemInstruction
-    });
+    }, `tool_round_${round}`);
   }
 
   throw new Error("AI tool loop exceeded the configured maximum rounds.");
