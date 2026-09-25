@@ -1,8 +1,3 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
-*/
-
 import React, { useState } from 'react';
 import { Sidebar } from '@/components/Sidebar';
 import { BottomNav } from '@/components/BottomNav';
@@ -48,52 +43,42 @@ export default function App() {
 
   const handleAction = (msg?: string) => {
     setActiveTab('chat');
-    if (msg) {
-      handleSendMessage(msg);
-    }
+    if (msg) handleSendMessage(msg);
   };
 
   return (
-    <div className="flex flex-col md:flex-row h-screen font-sans text-zinc-900 bg-[#F3F3F3] overflow-hidden selection:bg-black selection:text-white">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
-      
-      {/* Mobile Header */}
-      <div className="md:hidden flex items-center justify-between px-5 pt-4 pb-2 shrink-0 bg-[#F3F3F3]">
-        <button onClick={() => window.location.reload()} className="flex items-center gap-2 text-left focus:outline-none">
-          <div className="w-7 h-7 rounded-xl bg-black text-white flex items-center justify-center font-extrabold text-xs shadow-sm">
-            SO
+    <div className="min-h-screen h-screen overflow-hidden bg-[#f6f7f9] text-zinc-950 selection:bg-zinc-900 selection:text-white">
+      <div className="flex h-full">
+        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+
+        <main className="min-w-0 flex-1 flex flex-col overflow-hidden">
+          <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-zinc-200/70 bg-white/90 backdrop-blur-xl shrink-0">
+            <button onClick={() => setActiveTab('chat')} className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-xl bg-zinc-950 text-white flex items-center justify-center text-[11px] font-black tracking-tight">Z</span>
+              <span className="font-extrabold tracking-tight">Zeus</span>
+            </button>
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-zinc-500 uppercase tracking-wider">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Online
+            </span>
           </div>
-          <span className="text-lg font-extrabold text-black tracking-tight">SaaS Orchestrator</span>
-        </button>
+
+          <div className="flex-1 min-h-0 overflow-hidden p-2.5 md:p-5">
+            <div className="h-full min-h-0 rounded-[26px] md:rounded-[30px] border border-zinc-200/80 bg-[#f8f9fb] shadow-[0_12px_40px_rgba(0,0,0,0.04)] overflow-hidden">
+              {activeTab === 'chat' && (
+                <ChatInterface history={history} onSendMessage={handleSendMessage} isProcessing={isProcessing}
+                  currentTool={currentTool} agentSteps={agentSteps} streamingText={streamingText} setActiveTab={setActiveTab} />
+              )}
+              {activeTab === 'projects' && <ProjectsView />}
+              {activeTab === 'database' && <DatabaseStudioView />}
+              {activeTab === 'agents' && <SubAgentsView onAction={handleAction} />}
+              {activeTab === 'netlify' && <NetlifyDevOpsView onAction={handleAction} />}
+              {activeTab === 'governance' && <GovernanceView />}
+              {activeTab === 'reports' && <ReportsView onAction={handleAction} />}
+              {activeTab === 'dashboards' && <DashboardsView onAction={handleAction} />}
+            </div>
+          </div>
+        </main>
       </div>
-
-      <main className="flex-1 flex flex-col overflow-hidden relative px-3 pb-3 pt-2 md:pt-6 md:pb-6 md:pr-6 md:pl-2">
-        <div className="flex-1 min-h-0 overflow-y-auto md:overflow-hidden relative">
-          {activeTab === 'chat' && (
-            <ChatInterface 
-              history={history} 
-              onSendMessage={handleSendMessage} 
-              isProcessing={isProcessing}
-              currentTool={currentTool}
-              agentSteps={agentSteps}
-              streamingText={streamingText}
-              setActiveTab={setActiveTab}
-            />
-          )}
-          {activeTab === 'projects' && <ProjectsView />}
-          {activeTab === 'database' && <DatabaseStudioView />}
-          {activeTab === 'agents' && <SubAgentsView onAction={handleAction} />}
-          {activeTab === 'netlify' && <NetlifyDevOpsView onAction={handleAction} />}
-          {activeTab === 'governance' && <GovernanceView />}
-          {activeTab === 'reports' && <ReportsView onAction={handleAction} />}
-          {activeTab === 'dashboards' && <DashboardsView onAction={handleAction} />}
-        </div>
-        
-        <div className="mt-3 px-4 text-[11px] text-zinc-400 text-center md:text-right shrink-0 font-medium">
-          Personal SaaS Suite • Autonomous AI Software Builder • Netlify & Supabase CI/CD Ready
-        </div>
-      </main>
-
       <BottomNav activeTab={activeTab} setActiveTab={setActiveTab} />
     </div>
   );
