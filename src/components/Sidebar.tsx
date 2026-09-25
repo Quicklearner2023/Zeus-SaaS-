@@ -1,125 +1,78 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
-*/
-
-import React, { useState, useEffect } from 'react';
-import { 
-  Bot, 
-  Activity, 
-  Search, 
-  Layers,
-  Globe,
-  Zap,
-  FolderGit2,
-  Database,
-  ShieldCheck
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Activity, Bot, Database, FolderGit2, Globe2, Layers3, Search, ShieldCheck, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MOCK_DB } from '@/services/gemini';
 import { saasDb } from '@/services/db';
 
-interface SidebarProps {
-  activeTab: string;
-  setActiveTab: (tab: string) => void;
-}
+interface SidebarProps { activeTab: string; setActiveTab: (tab: string) => void; }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => {
-  const [projectsCount, setProjectsCount] = useState<number>(() => saasDb.getProjects().length);
+  const [projectsCount, setProjectsCount] = useState(() => saasDb.getProjects().length);
   const agentsCount = MOCK_DB.agents?.length || 0;
 
-  useEffect(() => {
-    const unsubscribe = saasDb.subscribe(() => {
-      setProjectsCount(saasDb.getProjects().length);
-    });
-    return unsubscribe;
-  }, []);
+  useEffect(() => saasDb.subscribe(() => setProjectsCount(saasDb.getProjects().length)), []);
 
-  const menuItems = [
-    { id: 'chat', label: 'Orchestrator Console', icon: Bot, badge: null },
-    { id: 'projects', label: 'Projects Studio', icon: FolderGit2, badge: projectsCount > 0 ? projectsCount : null },
-    { id: 'database', label: 'Database & Schema', icon: Database, badge: 'Supabase' },
-    { id: 'agents', label: 'Sub-Agents & Tasks', icon: Layers, badge: agentsCount > 0 ? agentsCount : null },
-    { id: 'netlify', label: 'Netlify & DevOps', icon: Globe, badge: 'Netlify' },
-    { id: 'governance', label: 'Governance & Audit', icon: ShieldCheck, badge: 'RBAC' },
-    { id: 'dashboards', label: 'SaaS Analytics', icon: Activity, badge: null },
-    { id: 'reports', label: 'AI Specs & Reports', icon: Search, badge: null },
+  const groups = [
+    { title: 'Build', items: [
+      { id: 'chat', label: 'Orchestrator', icon: Bot },
+      { id: 'projects', label: 'Projects', icon: FolderGit2, badge: projectsCount || null },
+      { id: 'agents', label: 'Agents & Tasks', icon: Layers3, badge: agentsCount || null },
+    ]},
+    { title: 'Infrastructure', items: [
+      { id: 'database', label: 'Database', icon: Database },
+      { id: 'netlify', label: 'Deployments', icon: Globe2 },
+      { id: 'governance', label: 'Governance', icon: ShieldCheck },
+    ]},
+    { title: 'Insights', items: [
+      { id: 'dashboards', label: 'Analytics', icon: Activity },
+      { id: 'reports', label: 'Reports', icon: Search },
+    ]},
   ];
 
   return (
-    <div className="hidden md:flex w-[280px] flex-col h-screen pt-8 pb-6 pl-8 pr-4 bg-[#F3F3F3] select-none shrink-0 border-r border-black/[0.03]">
-      {/* Brand & Title */}
-      <div className="mb-8 px-4 flex flex-col gap-2">
-        <button 
-          onClick={() => window.location.reload()} 
-          className="group text-left focus:outline-none"
-        >
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-7 h-7 rounded-lg bg-black text-white flex items-center justify-center font-extrabold text-xs shadow-sm group-hover:scale-105 transition-transform">
-              SO
-            </div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">SaaS Orchestrator</span>
-          </div>
-          <h1 className="text-xl font-extrabold text-zinc-900 tracking-tight leading-tight group-hover:text-zinc-600 transition-colors">
-            Dev Agent Studio
-          </h1>
-        </button>
+    <aside className="hidden md:flex w-[248px] shrink-0 h-full flex-col bg-white border-r border-zinc-200/80 px-3 py-4">
+      <button onClick={() => setActiveTab('chat')} className="px-3 py-2.5 flex items-center gap-3 text-left group">
+        <span className="w-9 h-9 rounded-[13px] bg-zinc-950 text-white flex items-center justify-center font-black text-sm shadow-sm group-hover:scale-[1.03] transition-transform">Z</span>
+        <span className="min-w-0">
+          <span className="block font-black tracking-tight text-[17px]">Zeus</span>
+          <span className="block text-[10px] font-semibold text-zinc-400 uppercase tracking-[0.16em]">SaaS Control Plane</span>
+        </span>
+      </button>
 
-        {/* Engine Status Tag */}
-        <div className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-black/[0.06] text-[11px] text-zinc-600 font-medium shadow-[0_1px_4px_rgba(0,0,0,0.02)]">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-          <span className="truncate">Lead Architect Online</span>
-        </div>
+      <div className="mx-2 mt-3 mb-5 px-3 py-2.5 rounded-2xl bg-zinc-50 border border-zinc-200/70 flex items-center gap-2.5">
+        <span className="relative flex w-2 h-2"><span className="absolute inset-0 rounded-full bg-emerald-400 animate-ping opacity-50"/><span className="relative w-2 h-2 rounded-full bg-emerald-500"/></span>
+        <div className="min-w-0"><div className="text-[11px] font-bold text-zinc-800">Orchestrator online</div><div className="text-[9px] text-zinc-400 font-medium">Netlify · GitHub · Supabase</div></div>
       </div>
-      
-      {/* Navigation */}
-      <nav className="flex-1 space-y-1.5 pr-2 overflow-y-auto scrollbar-hide">
-        {menuItems.map((item) => {
-          const isActive = activeTab === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={cn(
-                "relative w-full flex items-center justify-between px-4 py-3 rounded-2xl text-[14px] font-medium transition-all group",
-                isActive 
-                  ? "bg-black text-white shadow-sm" 
-                  : "text-zinc-600 hover:bg-black/[0.04] hover:text-black"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <item.icon size={17} strokeWidth={isActive ? 2.5 : 2} className={cn(isActive ? "text-white" : "text-zinc-400 group-hover:text-black")} />
-                <span>{item.label}</span>
-              </div>
 
-              {item.badge !== null && (
-                <span className={cn(
-                  "text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors",
-                  isActive 
-                    ? "bg-zinc-800 text-zinc-200" 
-                    : "bg-black/5 text-zinc-500 group-hover:bg-black/10 group-hover:text-black"
-                )}>
-                  {item.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      <nav className="flex-1 overflow-y-auto scrollbar-hide px-1">
+        {groups.map(group => (
+          <div key={group.title} className="mb-5">
+            <div className="px-3 mb-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-zinc-400">{group.title}</div>
+            <div className="space-y-0.5">
+              {group.items.map(item => {
+                const active = activeTab === item.id;
+                return (
+                  <button key={item.id} onClick={() => setActiveTab(item.id)}
+                    className={cn("w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-all",
+                      active ? "bg-zinc-950 text-white shadow-sm" : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950")}>
+                    <item.icon size={16} strokeWidth={active ? 2.4 : 2} className={active ? "text-white" : "text-zinc-400"} />
+                    <span className="flex-1 text-left">{item.label}</span>
+                    {item.badge && <span className={cn("min-w-5 h-5 px-1.5 rounded-md text-[9px] flex items-center justify-center font-black", active ? "bg-white/10 text-zinc-200" : "bg-zinc-100 text-zinc-500")}>{item.badge}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
-      {/* Footer Info Box */}
-      <div className="mt-auto px-4 pt-4 border-t border-black/[0.04] flex flex-col gap-2">
-        <div className="p-3 bg-white/80 rounded-2xl border border-black/[0.05] text-[11px] text-zinc-500 flex items-center justify-between shadow-[0_1px_6px_rgba(0,0,0,0.02)]">
-          <div className="flex items-center gap-2">
-            <Zap size={13} className="text-zinc-400" />
-            <span className="font-medium text-zinc-700">Target: Netlify CI/CD</span>
-          </div>
-          <span className="text-[10px] bg-emerald-50 text-emerald-700 font-semibold px-2 py-0.5 rounded-md">Ready</span>
+      <div className="pt-3 border-t border-zinc-100">
+        <div className="mx-1 p-3 rounded-2xl bg-zinc-950 text-white">
+          <div className="flex items-center justify-between mb-2"><span className="text-[10px] font-bold text-zinc-300">AUTOMATION</span><Zap size={13}/></div>
+          <div className="text-[11px] font-semibold">Autonomous execution ready</div>
+          <div className="text-[9px] text-zinc-400 mt-1">Plan → build → deploy</div>
         </div>
       </div>
-    </div>
+    </aside>
   );
 };
