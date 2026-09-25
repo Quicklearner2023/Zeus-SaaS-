@@ -110,6 +110,133 @@ app.get("/api/config-status", (req, res) => {
   res.json(status);
 });
 
+// --- SYSTEM DIAGNOSTICS ---
+// Each layer can be tested independently, or all layers can be run in sequence.
+// Responses contain only sanitized configuration/status data; secrets are never returned.
+async function withTimeout<T>(label: string, work: () => Promise<T>, ms = 12000): Promise<T> {
+  return await Promise.race([
+    work(),
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms))
+  ]);
+}
+
+async function runSystemCheck(layer: string) {
+  const started = Date.now();
+  const result: any = { layer, ok: false, latencyMs: 0, checkedAt: new Date().toISOString() };
+  try {
+    switch (layer) {
+      case "server":
+        result.ok = true;
+        result.detail = "Serverless function is running.";
+        break;
+      case "supabase": {
+        if (!supabase) throw new Error("Supabase server credentials are not configured.");
+        const probe = await withTimeout("Supabase probe", () => supabase.from("projects").select("id", { count: "exact", head: true }));
+        if (probe.error && probe.error.code !== "42P01") throw new Error(probe.error.message);
+        result.ok = true;
+        result.detail = probe.error?.code === "42P01" ? "Supabase is reachable; projects table is not present." : "Supabase is reachable and the projects table is queryable.";
+        result.count = probe.count ?? 0;
+        break;
+      }
+      case "github": {
+        const user = await withTimeout("GitHub probe", () => githubRequest("/user"));
+        result.ok = true;
+        result.detail = "GitHub API authenticated successfully.";
+        result.account = user.login || null;
+        break;
+      }
+      case "netlify": {
+        const site = await withTimeout("Netlify probe", () => getNetlifySite());
+        const deploy = await withTimeout("Netlify deploy probe", () => getNetlifyDeploy(String(site.id)));
+        result.ok = true;
+        result.detail = "Netlify API and configured site are reachable.";
+        result.site = { id: site.id, name: site.name || null, url: site.ssl_url || site.url || null, state: site.state || null };
+        result.latestDeploy = deploy ? { id: deploy.id, state: deploy.state, url: deploy.ssl_url || deploy.url || null } : null;
+        break;
+      }
+      case "gemini": {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
+        const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+        const { GoogleGenAI } = await import("@google/genai");
+        const ai = new GoogleGenAI({ apiKey });
+        const interaction = await withTimeout("Gemini probe", () => ai.interactions.create({
+          model,
+          input: "Reply with exactly: ZEUS_GEMINI_OK"
+        }));
+        result.ok = true;
+        result.detail = "Gemini API accepted a minimal live request.";
+        result.model = model;
+        result.responseId = interaction?.id || null;
+        break;
+      }
+      case "tool-executor": {
+        const siteId = process.env.NETLIFY_SITE_ID;
+        if (!siteId) throw new Error("NETLIFY_SITE_ID is not configured; cannot run a read-only tool probe.");
+        const toolResult = await withTimeout("Tool executor probe", () => executeTool("netlify_get_site", { siteId }));
+        if (!toolResult?.success) throw new Error(toolResult?.message || "Tool executor returned success=false.");
+        result.ok = true;
+        result.detail = "A real registered tool executed successfully.";
+        result.tool = "netlify_get_site";
+        result.toolResult = {
+          id: toolResult.site?.id || toolResult.id || siteId,
+          name: toolResult.site?.name || toolResult.name || null,
+          url: toolResult.site?.ssl_url || toolResult.site?.url || null
+        };
+        break;
+      }
+      case "orchestrator": {
+        const provider = resolveProvider();
+        const apiKey = provider === "gemini" ? process.env.GEMINI_API_KEY : provider === "openai" ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY;
+        if (!apiKey) throw new Error(`Selected AI provider "${provider}" is not configured.`);
+        const models: Record<string, string> = { gemini: process.env.GEMINI_MODEL || "gemini-3.8-flash", openai: process.env.OPENAI_MODEL || "gpt-5-mini", anthropic: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5" };
+        const agent = await withTimeout("Orchestrator probe", () => runProviderAgent({
+          provider,
+          model: models[provider],
+          apiKey: String(apiKey),
+          input: "Run a connectivity check. Do not call tools. Reply with exactly: ZEUS_ORCHESTRATOR_OK",
+          systemInstruction: "You are running a diagnostics probe. Do not call tools. Reply exactly with ZEUS_ORCHESTRATOR_OK.",
+          tools: [],
+          executeTool,
+          maxToolRounds: 1
+        }), 20000);
+        result.ok = true;
+        result.detail = "The server-side orchestrator completed a live AI request.";
+        result.provider = agent.provider;
+        result.model = agent.model;
+        result.response = agent.text;
+        result.rounds = agent.rounds;
+        break;
+      }
+      default:
+        throw new Error("Unknown diagnostic layer.");
+    }
+  } catch (error: any) {
+    result.ok = false;
+    result.error = safeError(error);
+  }
+  result.latencyMs = Date.now() - started;
+  return result;
+}
+
+app.get("/api/system-check", async (req, res) => {
+  const requested = String(req.query.layer || "all");
+  const layers = ["server", "supabase", "github", "netlify", "gemini", "tool-executor", "orchestrator"];
+  if (requested !== "all" && !layers.includes(requested)) {
+    return res.status(400).json({ error: `Unknown diagnostic layer: ${requested}`, layers });
+  }
+  const checks = requested === "all"
+    ? await Promise.all(layers.map(runSystemCheck))
+    : [await runSystemCheck(requested)];
+  const ok = checks.every(check => check.ok);
+  res.status(ok ? 200 : 503).json({
+    ok,
+    build: SERVER_BUILD_ID,
+    timestamp: new Date().toISOString(),
+    checks
+  });
+});
+
 // --- AI ORCHESTRATOR API ---
 const TOOL_DEFINITIONS = [
   {
