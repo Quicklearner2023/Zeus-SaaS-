@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Bot, Database, FolderGit2, Globe2, Layers3, Search, ShieldCheck, Zap } from 'lucide-react';
+import { Activity, Bot, Database, FolderGit2, Globe2, Layers3, Search, ShieldCheck, Zap, Stethoscope } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { MOCK_DB } from '@/services/gemini';
 import { saasDb } from '@/services/db';
@@ -22,6 +22,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
       { id: 'database', label: 'Database', icon: Database },
       { id: 'netlify', label: 'Deployments', icon: Globe2 },
       { id: 'governance', label: 'Governance', icon: ShieldCheck },
+    ]},
+    { title: 'Operations', items: [
+      { id: 'diagnostics', label: 'Diagnostics', icon: Stethoscope },
     ]},
     { title: 'Insights', items: [
       { id: 'dashboards', label: 'Analytics', icon: Activity },
