@@ -76,6 +76,15 @@ app.get("/api/integrations/status", async (req, res) => {
   res.json(status);
 });
 
+app.get("/api/health", (req, res) => {
+  res.json({
+    ok: true,
+    service: "zeus-orchestrator",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development"
+  });
+});
+
 app.get("/api/config-status", (req, res) => {
   const status = {
     ai: configuredProviders(),
@@ -133,7 +142,19 @@ const TOOL_DEFINITIONS = [
       properties: {
         projectId: { type: "string" },
         commitMessage: { type: "string" },
-        branch: { type: "string" }
+        branch: { type: "string" },
+        files: {
+          type: "array",
+          description: "Optional project files to create or update before deployment.",
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string" },
+              content: { type: "string" }
+            },
+            required: ["path", "content"]
+          }
+        }
       },
       required: ["projectId", "commitMessage"]
     }
@@ -379,6 +400,66 @@ async function githubCreateBranch(owner: string, repo: string, branch: string) {
     method: "POST",
     body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: base.object.sha })
   });
+}
+
+async function githubCommitFiles(
+  owner: string,
+  repo: string,
+  files: Array<{ path: string; content: string }>,
+  message: string,
+  branch?: string
+) {
+  const repository = await githubRequest(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`);
+  const targetBranch = branch || repository.default_branch || "main";
+  const ref = await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/ref/heads/${encodeURIComponent(targetBranch)}`
+  );
+  const parentSha = ref.object.sha;
+  const parentCommit = await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/commits/${encodeURIComponent(parentSha)}`
+  );
+
+  const tree = [];
+  for (const file of files) {
+    const path = String(file.path || "").trim();
+    if (!path || path.startsWith("/") || path.includes("..")) {
+      throw new Error(`Invalid project file path: ${path}`);
+    }
+    const blob = await githubRequest(
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/blobs`,
+      {
+        method: "POST",
+        body: JSON.stringify({ content: String(file.content ?? ""), encoding: "utf-8" })
+      }
+    );
+    tree.push({ path, mode: "100644", type: "blob", sha: blob.sha });
+  }
+
+  const treeResult = await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees`,
+    {
+      method: "POST",
+      body: JSON.stringify({ base_tree: parentCommit.tree.sha, tree })
+    }
+  );
+
+  const commit = await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/commits`,
+    {
+      method: "POST",
+      body: JSON.stringify({ message, tree: treeResult.sha, parents: [parentSha] })
+    }
+  );
+
+  await githubRequest(
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/refs/heads/${encodeURIComponent(targetBranch)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ sha: commit.sha, force: false })
+    }
+  );
+
+  return { branch: targetBranch, commitSha: commit.sha, commitUrl: commit.html_url };
 }
 
 async function githubCreatePullRequest(owner: string, repo: string, title: string, body: string, head: string, base: string) {
@@ -694,6 +775,26 @@ async function executeTool(name: string, args: Record<string, any>) {
       const branch = String(args.branch || "").trim();
       const project = await getProjectRecord(projectId);
 
+      const repoFullName = String(project?.github_repo_name || "");
+      const [owner, repo] = repoFullName.split("/");
+      const files = Array.isArray(args.files) ? args.files : [];
+      const commitMessage = String(args.commitMessage || "Update project");
+
+      let commitResult: any = null;
+      if (files.length > 0) {
+        if (!owner || !repo) throw new Error("This project has no GitHub repository associated with it.");
+        commitResult = await githubCommitFiles(
+          owner,
+          repo,
+          files.map((file: any) => ({
+            path: String(file?.path || "").trim(),
+            content: String(file?.content ?? "")
+          })),
+          commitMessage,
+          branch || undefined
+        );
+      }
+
       let siteId = project?.netlify_site_id ? String(project.netlify_site_id) : "";
       if (!siteId && process.env.NETLIFY_SITE_ID) siteId = String(process.env.NETLIFY_SITE_ID);
       if (!siteId) throw new Error("No Netlify site is associated with this project.");
@@ -746,7 +847,11 @@ async function executeTool(name: string, args: Record<string, any>) {
           commitRef: deploy.commit_ref || null,
           commitUrl: deploy.commit_url || null
         } : null,
-        message: ready
+        message: files.length > 0
+          ? (ready
+            ? `Committed ${files.length} project file(s) in ${commitResult?.commitSha || "the latest commit"} and verified the resulting Netlify deployment.`
+            : `Committed ${files.length} project file(s); the resulting Netlify deployment is currently ${state}.`)
+          : ready
           ? "The latest real Netlify deployment is ready."
           : failed
             ? `The latest Netlify deployment failed: ${deploy?.error_message || "unknown Netlify error"}`
@@ -842,10 +947,33 @@ IMPORTANT:
 // --- PLATFORM DATABASE API ---
 function requireServerSecret(req: express.Request, res: express.Response, next: express.NextFunction) {
   const configured = process.env.ZEUS_INTERNAL_API_KEY;
-  if (!configured) return res.status(503).json({ error: "Server API authentication is not configured." });
   const supplied = req.header("x-zeus-api-key");
-  if (!supplied || supplied !== configured) return res.status(401).json({ error: "Unauthorized." });
-  next();
+
+  // Server-to-server callers authenticate with the private key.
+  if (configured && supplied === configured) return next();
+
+  // Browser calls are restricted to the same origin so the dashboard can use
+  // the API without exposing a server secret to client JavaScript. This is
+  // CSRF protection, not user authentication; Supabase Auth/RBAC remains a
+  // later security layer.
+  const fetchSite = req.header("sec-fetch-site");
+  if (fetchSite === "same-origin" || fetchSite === "same-site") return next();
+
+  const origin = req.header("origin");
+  if (origin) {
+    try {
+      const originUrl = new URL(origin);
+      const host = req.get("host");
+      const forwardedHost = req.header("x-forwarded-host");
+      if (originUrl.host === host || originUrl.host === forwardedHost) return next();
+    } catch {}
+  }
+
+  if (!configured && (req.path.startsWith("/api/projects") || req.path.startsWith("/api/audit-logs"))) {
+    return res.status(403).json({ error: "Same-origin browser access or ZEUS_INTERNAL_API_KEY is required." });
+  }
+
+  return res.status(401).json({ error: "Unauthorized." });
 }
 
 app.get("/api/projects", requireServerSecret, async (req, res) => {
