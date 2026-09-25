@@ -18,7 +18,62 @@ const supabase = (supabaseUrl && supabaseServiceKey)
   : null;
 
 const app = express();
+
 app.use(express.json());
+
+const SERVER_BUILD_ID = "pass5-diagnostics-20260925";
+
+function safeError(error: unknown) {
+  const err = error as any;
+  return {
+    name: err?.name || "Error",
+    message: err?.message || String(error || "Unknown error"),
+    code: err?.code || null
+  };
+}
+
+process.on("uncaughtException", (error) => {
+  console.error("[server][uncaughtException]", safeError(error));
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[server][unhandledRejection]", safeError(reason));
+});
+
+app.get("/api/health", (req, res) => {
+  res.status(200).json({
+    ok: true,
+    service: "zeus-server",
+    build: SERVER_BUILD_ID,
+    runtime: process.version,
+    moduleMode: "commonjs-netlify-function",
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get("/api/diagnostics", (req, res) => {
+  const provider = (() => {
+    try { return resolveProvider(); } catch { return null; }
+  })();
+
+  res.status(200).json({
+    ok: true,
+    build: SERVER_BUILD_ID,
+    runtime: process.version,
+    nodeEnv: process.env.NODE_ENV || null,
+    integrations: {
+      gemini: !!process.env.GEMINI_API_KEY,
+      github: !!process.env.GITHUB_TOKEN,
+      netlify: !!process.env.NETLIFY_AUTH_TOKEN && !!process.env.NETLIFY_SITE_ID,
+      supabase: !!(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) && !!process.env.SUPABASE_SERVICE_ROLE_KEY
+    },
+    ai: {
+      provider,
+      configured: configuredProviders()
+    },
+    timestamp: new Date().toISOString()
+  });
+});
 
 app.use((req, res, next) => {
   res.setHeader("Cache-Control", "no-store");
@@ -712,9 +767,16 @@ IMPORTANT:
       toolRounds: result.rounds
     });
   } catch (error: any) {
-    console.error("[server] AI Orchestrator error:", error);
-    const message = error?.message || "Unknown server error.";
-    res.status(500).json({ error: message });
+    const details = safeError(error);
+    const errorId = `zeus-${Date.now().toString(36)}`;
+    console.error("[server][chat]", errorId, details);
+    res.status(500).json({
+      error: details.message,
+      errorId,
+      type: details.name,
+      code: details.code,
+      build: SERVER_BUILD_ID
+    });
   }
 });
 
@@ -775,4 +837,12 @@ if (process.env.NODE_ENV !== "production") {
 }
 
 // Export as Netlify function
+app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const details = safeError(error);
+  const errorId = `zeus-${Date.now().toString(36)}`;
+  console.error("[server][express]", errorId, details);
+  if (res.headersSent) return next(error);
+  res.status(500).json({ error: details.message, errorId, type: details.name, build: SERVER_BUILD_ID });
+});
+
 export const handler = serverless(app);
