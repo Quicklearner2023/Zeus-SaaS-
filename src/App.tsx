@@ -9,6 +9,7 @@ import { DatabaseStudioView } from '@/components/DatabaseStudioView';
 import { GovernanceView } from '@/components/GovernanceView';
 import { ReportsView } from '@/components/ReportsView';
 import { DashboardsView } from '@/components/DashboardsView';
+import { DiagnosticsView } from '@/components/DiagnosticsView';
 import { sendMessageToAgentStream, ChatMessage, ToolCall, AgentStep } from '@/services/gemini';
 
 export default function App() {
@@ -73,6 +74,7 @@ export default function App() {
               {activeTab === 'agents' && <SubAgentsView onAction={handleAction} />}
               {activeTab === 'netlify' && <NetlifyDevOpsView onAction={handleAction} />}
               {activeTab === 'governance' && <GovernanceView />}
+              {activeTab === 'diagnostics' && <DiagnosticsView />}
               {activeTab === 'reports' && <ReportsView onAction={handleAction} />}
               {activeTab === 'dashboards' && <DashboardsView onAction={handleAction} />}
             </div>
