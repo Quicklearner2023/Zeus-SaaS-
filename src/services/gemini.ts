@@ -19,7 +19,7 @@ import {
 } from '@/types';
 
 // Client-side AI bridge. Direct SDK usage moved to server-side for security.
-export const MODEL_NAME = "gemini-3.6-flash";
+export const MODEL_NAME = "gemini-3.8-flash";
 
 export interface ChatMessage {
   role: 'user' | 'model' | 'system';
@@ -110,7 +110,7 @@ export async function sendMessageToAgentStream(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `Server error: ${response.statusText || 'Unknown Error'}`);
+      throw new Error(errorData.error ? `${errorData.error}${errorData.errorId ? ` [${errorData.errorId}]` : ''}${errorData.code ? ` (${errorData.code})` : ''}` : `Server error: ${response.status} ${response.statusText || 'Unknown Error'}`);
     }
 
     const data = await response.json();
