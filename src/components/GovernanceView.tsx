@@ -74,52 +74,15 @@ export const GovernanceView: React.FC = () => {
             <ShieldCheck size={22} className="text-indigo-600" />
             <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">Platform Security</span>
           </div>
-          <h1 className="text-2xl font-black text-zinc-900 tracking-tight">Governance, RBAC & Audit</h1>
+          <h1 className="text-2xl font-black text-zinc-900 tracking-tight">Governance</h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Platform user access controls, Secret Redaction Engine monitoring, and high-impact action audit logs.
+            Access, integrations, and high-impact actions.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-900 px-3.5 py-2 rounded-xl text-xs font-semibold">
-          <Lock size={14} className="text-indigo-600" />
-          <span>Zero-Leak Secret Redaction Active</span>
-        </div>
-      </div>
-
-      {/* Stats row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-black/[0.06] shadow-[0_2px_10px_rgba(0,0,0,0.02)] space-y-1">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block">Platform Users</span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-zinc-900">{users.length}</span>
-            <Users size={18} className="text-zinc-400" />
-          </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl border border-black/[0.06] shadow-[0_2px_10px_rgba(0,0,0,0.02)] space-y-1">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block">Redacted Keys Today</span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-emerald-600">100% (28 Keys)</span>
-            <Key size={18} className="text-emerald-500" />
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-black/[0.06] shadow-[0_2px_10px_rgba(0,0,0,0.02)] space-y-1">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block">Audit Events Recorded</span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-zinc-900">{auditLogs.length}</span>
-            <FileText size={18} className="text-zinc-400" />
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-black/[0.06] shadow-[0_2px_10px_rgba(0,0,0,0.02)] space-y-1">
-          <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider block">Active Tokens Used</span>
-          <div className="flex items-baseline justify-between">
-            <span className="text-2xl font-black text-indigo-600">124.5k</span>
-            <Cpu size={18} className="text-indigo-500" />
-          </div>
-        </div>
-      </div>
+        
 
       {/* Integration Status Dashboard */}
       <div className="bg-white rounded-2xl p-6 border border-black/[0.06] shadow-[0_2px_12px_rgba(0,0,0,0.03)] space-y-6">
@@ -173,7 +136,7 @@ export const GovernanceView: React.FC = () => {
         <div className="flex items-center justify-between border-b border-black/[0.05] pb-4">
           <div className="flex items-center gap-2 font-bold text-zinc-800 text-sm">
             <Users size={16} className="text-indigo-600" />
-            <span>Platform RBAC Role Access</span>
+            <span>Role access</span>
           </div>
           <span className="text-xs text-zinc-400">Roles: Owner, Admin, Member, Viewer</span>
         </div>
@@ -265,16 +228,16 @@ export const GovernanceView: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 font-bold text-zinc-800 text-xs uppercase tracking-wider">
             <Lock size={15} className="text-emerald-600" />
-            <span>Secret Sanitization Engine Status</span>
+            <span>Secrets</span>
           </div>
           <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-0.5 rounded-full">
             <CheckCircle2 size={11} />
-            0 Plaintext Key Leaks
+            Server-side only
           </span>
         </div>
 
         <p className="text-xs text-zinc-500">
-          The platform automatically intercepts and masks sensitive strings (<code className="font-mono text-zinc-700 bg-zinc-100 px-1 rounded">GEMINI_API_KEY</code>, <code className="font-mono text-zinc-700 bg-zinc-100 px-1 rounded">GITHUB_TOKEN</code>, <code className="font-mono text-zinc-700 bg-zinc-100 px-1 rounded">NETLIFY_AUTH_TOKEN</code>, <code className="font-mono text-zinc-700 bg-zinc-100 px-1 rounded">SUPABASE_SERVICE_ROLE_KEY</code>) across logs, agent streaming outputs, and API responses.
+          Secrets remain on the server and are not rendered into the client UI.
         </p>
       </div>
 
@@ -283,9 +246,9 @@ export const GovernanceView: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 font-bold text-zinc-800 text-xs uppercase tracking-wider">
             <FileText size={15} className="text-indigo-600" />
-            <span>Platform High-Impact Action Audit Trail</span>
+            <span>Audit trail</span>
           </div>
-          <span className="text-[11px] text-zinc-400 font-mono">Immutable Log Stream</span>
+          <span className="text-[11px] text-zinc-400 font-mono">Recent recorded actions</span>
         </div>
 
         <div className="space-y-2">
