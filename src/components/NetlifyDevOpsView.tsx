@@ -5,6 +5,8 @@ interface NetlifyDevOpsViewProps { onAction: (msg?: string) => void; }
 
 type IntegrationStatus = any;
 
+const API_BASE = import.meta.env.PROD ? '/.netlify/functions/server' : '';
+
 export const NetlifyDevOpsView: React.FC<NetlifyDevOpsViewProps> = ({ onAction }) => {
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -13,7 +15,7 @@ export const NetlifyDevOpsView: React.FC<NetlifyDevOpsViewProps> = ({ onAction }
   const refresh = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const r = await fetch('/api/integrations/status');
+      const r = await fetch(`${API_BASE}/api/integrations/status`);
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Unable to load integration status');
       setStatus(data);
