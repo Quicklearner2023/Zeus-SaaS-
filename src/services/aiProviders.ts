@@ -1,4 +1,3 @@
-import { GoogleGenAI } from "@google/genai";
 export type AIProvider = "gemini" | "openai" | "anthropic";
 
 export interface ProviderTool {
@@ -235,6 +234,7 @@ export async function runProviderAgent(options: {
     throw new Error("AI tool loop exceeded the configured maximum rounds.");
   }
 
+  const { GoogleGenAI } = await import("@google/genai");
   const ai = new GoogleGenAI({ apiKey: options.apiKey });
   let interaction = await ai.interactions.create({
     model: options.model,
